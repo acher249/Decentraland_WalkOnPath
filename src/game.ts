@@ -9,8 +9,15 @@ const cpoint2 = new Vector3(12.8, 0, 3.2)
 const cpoint3 = new Vector3(12.8, 0, 12.8)
 const cpoint4 = new Vector3(3.2, 0, 11.2)
 
+const cpoint5 = new Vector3(1.2, 0, 11.2)
+const cpoint6 = new Vector3(3, 0, 10)
+const cpoint7 = new Vector3(13, 0, 6)
+const cpoint8 = new Vector3(4.2, 0, 4.6)
+
 // Compile these points into an array
 const cpoints_1 = [cpoint1, cpoint2, cpoint3, cpoint4]
+
+const cpoints_2 = [cpoint5, cpoint6, cpoint7, cpoint8]
 
 // Create a Catmull-Rom Spline curve. This curve passes through all 4 points. The total number of points in the path is set by  `curvePoints`
 const catmullPath_1 = Curve3.CreateCatmullRomSpline(
@@ -19,9 +26,15 @@ const catmullPath_1 = Curve3.CreateCatmullRomSpline(
   true
 ).getPoints()
 
+const catmullPath_2 = Curve3.CreateCatmullRomSpline(
+  cpoints_2,
+  curvePoints,
+  true
+).getPoints()
+
 // Custom component to store path and lerp data
-@Component('pathData')
-export class PathData {
+@Component('pathData_1')
+export class PathData_1 {
   origin: number = 0
   target: number = 1
   path: Vector3[] = catmullPath_1
@@ -31,8 +44,20 @@ export class PathData {
   }
 }
 
+@Component('pathData_2')
+export class PathData_2 {
+  origin: number = 0
+  target: number = 1
+  path: Vector3[] = catmullPath_2
+  fraction: number = 0
+  constructor(path: Vector3[]) {
+    this.path = path
+  }
+}
+
 // component group of all sharks (just one in this example, but could be extended)
-export const sharks = engine.getComponentGroup(PathData)
+export const humans_1 = engine.getComponentGroup(PathData_1)
+export const humans_2 = engine.getComponentGroup(PathData_2)
 
 // Custom component to store rotational lerp data
 @Component('rotateData')
@@ -43,18 +68,18 @@ export class RotateData {
 }
 
 // Custom component to store current speed
-@Component('swimSpeed')
-export class SwimSpeed {
-  speed: number = 0.5
+@Component('walkSpeed')
+export class WalkSpeed {
+  speed: number = 2
 }
 
 // Lerp over the points of the curve
-export class PatrolPath {
+export class PatrolPath_1 {
   update() {
-    for (const shark of sharks.entities) {
-      const transform = shark.getComponent(Transform)
-      const path = shark.getComponent(PathData)
-      const speed = shark.getComponent(SwimSpeed)
+    for (const human of humans_1.entities) {
+      const transform = human.getComponent(Transform)
+      const path = human.getComponent(PathData_1)
+      const speed = human.getComponent(WalkSpeed)
       transform.position = Vector3.Lerp(
         path.path[path.origin],
         path.path[path.target],
@@ -73,14 +98,39 @@ export class PatrolPath {
   }
 }
 
-engine.addSystem(new PatrolPath(), 2)
+export class PatrolPath_2 {
+  update() {
+    for (const human of humans_2.entities) {
+      const transform = human.getComponent(Transform)
+      const path = human.getComponent(PathData_2)
+      const speed = human.getComponent(WalkSpeed)
+      transform.position = Vector3.Lerp(
+        path.path[path.origin],
+        path.path[path.target],
+        path.fraction
+      )
+      path.fraction += speed.speed / 10
+      if (path.fraction > 1) {
+        path.origin = path.target
+        path.target += 1
+        if (path.target >= path.path.length - 1) {
+          path.target = 0
+        }
+        path.fraction = 0
+      }
+    }
+  }
+}
+
+engine.addSystem(new PatrolPath_1(), 2)
+engine.addSystem(new PatrolPath_2(), 2)
 
 // Change speed depending on how steep the current section of the shark's path is
 export class UpdateSpeed {
   update() {
-    for (const shark of sharks.entities) {
-      const speed = shark.getComponent(SwimSpeed)
-      speed.speed = 1.9
+    for (const shark of humans_1.entities) {
+      const speed = shark.getComponent(WalkSpeed)
+      speed.speed = 2
 
     }
   }
@@ -89,13 +139,13 @@ export class UpdateSpeed {
 engine.addSystem(new UpdateSpeed(), 1)
 
 // Rotate gradually with a spherical lerp
-export class RotateSystem {
+export class RotateSystem_1 {
   update(dt: number) {
-    for (const shark of sharks.entities) {
-      const transform = shark.getComponent(Transform)
-      const path = shark.getComponent(PathData)
-      const rotate = shark.getComponent(RotateData)
-      const speed = shark.getComponent(SwimSpeed)
+    for (const human of humans_1.entities) {
+      const transform = human.getComponent(Transform)
+      const path = human.getComponent(PathData_1)
+      const rotate = human.getComponent(RotateData)
+      const speed = human.getComponent(WalkSpeed)
       rotate.fraction += speed.speed / 10
 
       if (rotate.fraction > 1) {
@@ -115,7 +165,34 @@ export class RotateSystem {
   }
 }
 
-engine.addSystem(new RotateSystem(), 3)
+export class RotateSystem_2 {
+  update(dt: number) {
+    for (const human of humans_2.entities) {
+      const transform = human.getComponent(Transform)
+      const path = human.getComponent(PathData_2)
+      const rotate = human.getComponent(RotateData)
+      const speed = human.getComponent(WalkSpeed)
+      rotate.fraction += speed.speed / 10
+
+      if (rotate.fraction > 1) {
+        rotate.fraction = 0
+        rotate.originRot = transform.rotation
+        const direction = path.path[path.target]
+          .subtract(path.path[path.origin])
+          .normalize()
+        rotate.targetRot = Quaternion.LookRotation(direction)
+      }
+      transform.rotation = Quaternion.Slerp(
+        rotate.originRot,
+        rotate.targetRot,
+        rotate.fraction
+      )
+    }
+  }
+}
+
+engine.addSystem(new RotateSystem_1(), 3)
+engine.addSystem(new RotateSystem_2(), 3)
 
 // Add HumanWalking Model model
 const humanWalking_1 = new Entity()
@@ -127,9 +204,22 @@ humanWalking_1.addComponent(
 )
 
 humanWalking_1.addComponent(new GLTFShape('models/WalkingMan_LowPoly3.gltf'))
-humanWalking_1.addComponent(new PathData(catmullPath_1))
+humanWalking_1.addComponent(new PathData_1(catmullPath_1))
 humanWalking_1.addComponent(new RotateData())
-humanWalking_1.addComponent(new SwimSpeed())
+humanWalking_1.addComponent(new WalkSpeed())
 engine.addEntity(humanWalking_1)
 
 
+const humanWalking_2 = new Entity()
+humanWalking_2.addComponent(
+  new Transform({
+    position: new Vector3(1, 0, 1),
+    scale: new Vector3(1.2, 1.2, 1.2)
+  })
+)
+
+humanWalking_2.addComponent(new GLTFShape('models/WalkingMan_LowPoly3.gltf'))
+humanWalking_2.addComponent(new PathData_2(catmullPath_2))
+humanWalking_2.addComponent(new RotateData())
+humanWalking_2.addComponent(new WalkSpeed())
+engine.addEntity(humanWalking_2)
